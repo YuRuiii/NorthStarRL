@@ -1,79 +1,89 @@
-import gymnasium as gym
-from gymnasium import spaces
-import requests
-import random
-import time
-import matplotlib.pyplot as plt
 import numpy as np
+import gym
+import requests
+from gym import spaces
+from stable_baselines3 import PPO
+
+def _get_price(timestep):
+    data = {
+        "timestep": timestep
+    }
+    response = requests.post("http://localhost:5000/get-price", json=data)
+    price = response.json()["price"]
+    return price
+
+def _get_reward(action, balance, initial_balance):
+    data = {
+        "balance": balance,
+        "initial_balance": initial_balance
+    }
+    response = requests.post("http://localhost:5000/get-reward", json=data)
+    reward = response.json()["reward"]
+    return reward
+
 
 class TradingEnv(gym.Env):
-    metadata = {"render.modes": ["human"]}
-    
-    def __init__(
-        self,
-        unified_symbol,
-        initial_investment_amount,
-        timestep=0
-    ):
-        self.timestep = timestep
-        self.unified_symbol = unified_symbol # 资产代码
-        self.initial_investment_amount = initial_investment_amount # 向该资产投入的资金
-        self.action_space = spaces.Box(low=-1, high=1, shape=(1,)) # 将多少比例的资产买入或卖出
+    def __init__(self, initial_balance=10000):
+        super(TradingEnv, self).__init__()
+
+        self.initial_balance = initial_balance
+        self.balance = initial_balance
+        self.current_step = 0
+        self.max_steps = 100  # 最大步数
+
+        # 观察空间：包括账户余额和当前步数
         self.observation_space = spaces.Box(low=0, high=np.inf, shape=(2,), dtype=np.float32)
 
         # 动作空间：买入、卖出、持有
-        self.state = [0.5]
-        self.reward = 0
-        self.asset_memory = [initial_investment_amount]
-        self.price_memory = [0.5]
-        self.reward_memory = []
-        self.action_memory = []
-        self.date_memory = [0]
-        self.now_asset = initial_investment_amount
-        
-    def _get_reward(self, action, last_price, now_price):
-        action = action[0] if isinstance(action, (list, np.ndarray)) else action
-        data = {
-            "action": action[0],
-            "last_price": last_price,
-            "current_price": now_price
-        }
-        response = requests.post("http://localhost:5000/get-reward", json=data)
-        return response.json()["reward"]
-    
-    def _get_state(self, timestep, action):
-        action = action[0] if isinstance(action, (list, np.ndarray)) else action
-        data = {
-            "action": action,
-            "timestep": timestep
-        }
-        response = requests.post("http://localhost:5000/get-state", json=data)
-        price = response.json()["price"]
-        self.price_memory.append(price)
-        self.timestep += 1
-        self.date_memory.append(self.timestep)
-        return [price]
-    
+        self.action_space = spaces.Discrete(3)
+
+    def reset(self):
+        self.balance = self.initial_balance
+        self.current_step = 0
+        return np.array([self.balance, self.current_step])
+
     def step(self, action):
-        # print(action)
-        print(action, self.timestep)
-        # self.state = self._get_state(action, self.timestep)
-        # self.reward = self._get_reward(action, self.price_memory[-2], self.price_memory[-1])
-        # self.now_asset = self.reward * self.now_asset + self.now_asset
-        # print(f"timestep: {self.timestep}, action: {action}, state: {self.state:.2f}, reward: {self.reward:.2f}, now_asset: {self.now_asset:.2f}")
+        assert self.action_space.contains(action)
+
+        # 模拟股价变动
+        price = _get_price(self.current_step)
         
-# if __name__ == '__main__':
-#     env = TradingEnv("AAPL", 10)
-#     for i in range(100):
-#         if env.state < 0.3:
-#             action = 1
-#         elif env.state > 0.7:
-#             action = -1
-#         else:
-#             action = 0
-#         # action = random.uniform(-1, 1)
-#         env.step(action)
-        
-#     plt.plot(env.price_memory)
-#     plt.scatter(env.date_memory, env.price_memory, s=10)
-#     plt.savefig("price.png", dpi=500)
+        # 根据动作执行交易
+        if action == 0:  # 买入
+            self.balance -= price
+        elif action == 1:  # 卖出
+            self.balance += price
+        else:  # 持有
+            pass
+
+        self.current_step += 1
+
+        # 计算奖励
+        # reward = self.balance - self.initial_balance
+        reward = _get_reward(action, self.balance, self.initial_balance)
+
+        # 检查是否达到最大步数
+        done = self.current_step >= self.max_steps
+
+        # 返回观察、奖励、终止标志和额外信息
+        obs = np.array([self.balance, self.current_step])
+        return obs, reward, done, {}
+
+# 创建自定义交易环境
+env = TradingEnv()
+
+# 创建PPO代理
+model = PPO("MlpPolicy", env, verbose=1)
+
+# 训练代理
+model.learn(total_timesteps=10000)
+model.save("ppo_trading")
+
+# 测试代理
+obs = env.reset()
+for _ in range(10):
+    action, _ = model.predict(obs)  # 使用代理进行预测
+    obs, reward, done, _ = env.step(action)
+    print("Balance:", obs[0], "Step:", obs[1], "Reward:", reward, "Done:", done)
+    if done:
+        break

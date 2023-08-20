@@ -4,10 +4,11 @@ from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
-@app.route('/get-state', methods=['POST2'])
-def get_state(data):
+@app.route('/get-price', methods=['POST'])
+def get_price():
     data = request.get_json()
-    timestamp = data['timestamp']
+    print("data", data)
+    timestamp = data['timestep']
     response_data = {
         # "price": 0.25 * math.sin(timestamp) + 0.25 * math.sin(2 * timestamp) + 0.5 * math.sin(3 * timestamp)
         "price": math.sin(0.01 * timestamp)
@@ -17,10 +18,9 @@ def get_state(data):
 @app.route('/get-reward', methods=['POST'])
 def get_reward():
     data = request.get_json()
-    action = data['action']
-    last_price = data['last_price']
-    current_price = data['current_price']
-    reward = action * (current_price - last_price)
+    balance = data['balance']
+    initial_balance = data['initial_balance']
+    reward = balance - initial_balance
     response_data = {
         "reward": reward
     }

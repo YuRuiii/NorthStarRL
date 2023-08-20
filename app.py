@@ -6,6 +6,13 @@ app = Flask(__name__)
 @app.route('/learn')
 def learn():
     data = request.get_json()
+    agent = data['algorithm']
+    if agent.lower() == 'ppo':
+        
+    else:
+        assert 0
+        
+    
     
 @app.route()
     
@@ -13,7 +20,6 @@ def learn():
 def predict():
     data = request.get_json()
     
-    model_name = data['model_name']
     model_path = data['model_path']
     
     
