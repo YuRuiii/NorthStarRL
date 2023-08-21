@@ -6,7 +6,7 @@ from stable_baselines3 import TD3
 from flask import Flask, request, jsonify
 from env import TradingEnv
 
-MODELS = {
+AGENTS = {
     "A2C": A2C,
     "DDPG": DDPG,
     "PPO": PPO,
@@ -16,31 +16,38 @@ MODELS = {
 
 app = Flask(__name__)
 env = TradingEnv()
-class Agent:
+class Model:
     def __init__(self, env):
         self.env = env
-        self.model = self.create_model()
+        self.agent = None
         
-    @app.route('/create-model', methods=['POST'])
-    def create_model(self):
+    @app.route('/create-agent', methods=['POST'])
+    def create_agent(self):
         data = request.get_json()
-        agent = data['algorithm']
-        if agent.upper() == 'PPO':
-            model = PPO("MlpPolicy", env, verbose=1)
-        else:
-            assert 0
-        return model
+        agent = data['agent']
+        agent = AGENTS[agent.upper()]("MlpPolicy", env, verbose=1)
+        return agent
+    
+    @app.route('/create-agent-from-pretrained', methods=['POST'])
+    def create_agent_from_pretrained(self):
+        data = request.get_json()
+        agent = data['agent']
+        agent_path = data['agent_path']
+        agent = AGENTS[agent.upper()].load(agent_path)
+        return agent
+        
 
-    @app.route('/learn')
+    @app.route('/learn', methods=['POST'])
     def learn(self):
-        self.model.learn(total_timesteps=10000)
-        return self.model
+        data = request.get_json()
+        total_episodes = data['total_episodes']
+        self.agent.learn(total_timesteps=total_episodes)
+        return self.agent
     
     @app.route('/predict', methods=['POST'])
     def predict(self):
         data = request.get_json()
-        
-        action, _ = self.model.predict(data)
+        action, _ = self.agent.predict(data)
         return action
 
 app.run(port=5001)
