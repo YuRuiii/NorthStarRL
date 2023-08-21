@@ -43,5 +43,5 @@ class Agent:
         action, _ = self.model.predict(data)
         return action
 
-app.run(port=8080)
+app.run(port=5001)
     
